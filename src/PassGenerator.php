@@ -1,6 +1,6 @@
 <?php namespace Thenextweb;
 
-use Storage;
+use Config;
 use Log;
 use InvalidArgumentException;
 
@@ -75,22 +75,23 @@ class PassGenerator
      * @throws RuntimeException
      */
     public function __construct($pass_id = false, $replace_existent = false)
-    {
+    {        
         // Set certificate
-        if (is_file(config('passgenerator.certificate_store_path'))) {
-            $this->cert_store = file_get_contents(config('passgenerator.certificate_store_path'));
+        //dd(Config::get('passgenerator::certificate_store_path'));
+        if (is_file(Config::get('passgenerator::certificate_store_path'))) {
+            $this->cert_store = file_get_contents(Config::get('passgenerator::certificate_store_path'));
         } else {
-            throw new InvalidArgumentException("No certificate found on " . config('passgenerator.certificate_store_path'));
+            throw new InvalidArgumentException("No certificate found on " . Config::get('passgenerator::certificate_store_path'));
         }
 
         // Set password
-        $this->cert_store_password = config('passgenerator.certificate_store_password');
+        $this->cert_store_password = Config::get('passgenerator::certificate_store_password');
 
 
-        if (is_file(config('passgenerator.wwdr_certificate_path')) && @openssl_x509_read(file_get_contents(config('passgenerator.wwdr_certificate_path')))) {
-            $this->wwdr_cert_path= config('passgenerator.wwdr_certificate_path');
+        if (is_file(Config::get('passgenerator::wwdr_certificate_path')) && @openssl_x509_read(file_get_contents(Config::get('passgenerator::wwdr_certificate_path')))) {
+            $this->wwdr_cert_path= Config::get('passgenerator::wwdr_certificate_path');
         } else {
-            $error_msg = "No valid intermediate certificate was found on " . config('passgenerator.wwdr_certificate_path'). PHP_EOL;
+            $error_msg = "No valid intermediate certificate was found on " . Config::get('passgenerator::wwdr_certificate_path'). PHP_EOL;
             $error_msg .= "The WWDR intermediate certificate must be on PEM format, ";
             $error_msg .= "the DER version can be found at https://www.apple.com/certificateauthority/ ";
             $error_msg .= "But you'll need to export it into PEM.";
@@ -104,14 +105,15 @@ class PassGenerator
         }
         $this->pass_relative_path = "$pass_id";
         $this->pass_filename = "$pass_id.pkpass";
-        if (Storage::disk('passgenerator')->has($this->pass_filename)) {
+
+        if (\File::exists(rtrim(Config::get('passgenerator::storage_path'),'/').'/'.$this->pass_filename)) {
             if ($replace_existent) {
-                Storage::disk('passgenerator')->delete($this->pass_filename);
+                \File::delete(rtrim(Config::get('passgenerator::storage_path'),'/').'/'.$this->pass_filename);                
             } else {
                 throw new \RuntimeException("The file {$this->pass_filename} already exists, try another pass_id or download.");
             }
         }
-        $this->pass_real_path = Storage::disk('passgenerator')->getDriver()->getAdapter()->getPathPrefix() . $this->pass_relative_path;
+        $this->pass_real_path = rtrim(Config::get('passgenerator::storage_path'),'/') . '/' . $this->pass_relative_path;
     }
 
     /**
@@ -120,7 +122,8 @@ class PassGenerator
      */
     public function __destruct()
     {
-        Storage::disk('passgenerator')->deleteDirectory($this->pass_relative_path);
+        \File::deleteDirectory(rtrim(Config::get('passgenerator::storage_path'),'/').'/'.$this->pass_relative_path);
+        // Storage::disk('passgenerator')->deleteDirectory($this->pass_relative_path);
     }
 
     /**
@@ -214,7 +217,11 @@ class PassGenerator
 
         // Create and store the json manifest
         $manifest = $this->createJsonManifest();
-        Storage::disk('passgenerator')->put($this->pass_relative_path. '/manifest.json', $manifest);
+
+        $stpath = rtrim(Config::get('passgenerator::storage_path'),'/') . '/';
+
+        \File::put($stpath.$this->pass_relative_path.'/manifest.json', $manifest);
+        //Storage::disk('passgenerator')->put($this->pass_relative_path. '/manifest.json', $manifest);
 
         // Sign manifest with the certificate
         $this->signManifest();
@@ -223,11 +230,12 @@ class PassGenerator
         $this->zipItAll();
 
         // Get it out of the tmp folder and clean everything up
-        Storage::disk('passgenerator')->move($this->pass_relative_path. '/' . $this->pass_filename, $this->pass_filename);
-        Storage::disk('passgenerator')->deleteDirectory($this->pass_relative_path);
+
+        \File::move($stpath.$this->pass_relative_path. '/' . $this->pass_filename, $stpath . $this->pass_filename);
+        \File::deleteDirectory($stpath.$this->pass_relative_path);
 
         // Return the contents, but keep the pkpass stored for future downloads
-        return Storage::disk('passgenerator')->get($this->pass_filename);
+        return \File::get($stpath.$this->pass_filename);
     }
 
     /**
@@ -239,8 +247,10 @@ class PassGenerator
      */
     public static function getPass($pass_id)
     {
-        if (Storage::disk('passgenerator')->has($pass_id)) {
-            return Storage::disk('passgenerator')->get($pass_id);
+
+        $stpath = rtrim(Config::get('passgenerator::storage_path'),'/') . '/';
+        if (\File::exists($stpath.$pass_id)) {
+            return \File::get($stpath.$pass_id);
         }
         return false;
     }
@@ -254,7 +264,8 @@ class PassGenerator
      */
     public static function getPassFilePath($pass_id)
     {
-        if (Storage::disk('passgenerator')->has($pass_id)) {
+        $stpath = rtrim(Config::get('passgenerator::storage_path'),'/') . '/';
+        if (\File::exists($stpath.$pass_id)) {
             return $this->pass_real_path . "/../" . $this->pass_filename;
         }
         return false;
@@ -329,6 +340,8 @@ class PassGenerator
         $manifest_path = $this->pass_real_path . '/' . $this->manifest_filename;
         $signature_path = $this->pass_real_path . '/' . $this->signature_filename;
 
+        $stpath = rtrim(Config::get('passgenerator::storage_path'),'/') . '/';
+        
         $certs = [];
         if (openssl_pkcs12_read($this->cert_store, $certs, $this->cert_store_password)) {
             // Get the certificate resource
@@ -344,9 +357,9 @@ class PassGenerator
              * It turns out we are lucky since p7s format is just a Base64 encoded DER signature
              * enclosed between some email headers a MIME bs, so we just need to remove some lines
              */
-            $signature = Storage::disk('passgenerator')->get($this->pass_relative_path.'/'.$this->signature_filename);
+            $signature = \File::get($stpath.$this->pass_relative_path.'/'.$this->signature_filename);
             $signature = $this->removeMimeBS($signature);
-            Storage::disk('passgenerator')->put($this->pass_relative_path.'/'.$this->signature_filename, $signature);
+            \File::put($stpath.$this->pass_relative_path.'/'.$this->signature_filename, $signature);
             return;
         }
 
@@ -383,8 +396,11 @@ class PassGenerator
      */
     private function create_temp_folder()
     {
+
+        $stpath = rtrim(Config::get('passgenerator::storage_path'),'/') . '/';
         if (!is_dir($this->pass_real_path)) {
-            Storage::disk('passgenerator')->makeDirectory($this->pass_relative_path);
+            //dd($stpath);
+            \File::makeDirectory($stpath.$this->pass_relative_path);
         }
     }
 }

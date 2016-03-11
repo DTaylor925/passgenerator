@@ -13,62 +13,48 @@ class PassGeneratorServiceProvider extends ServiceProvider
     protected $defer = false;
 
     /**
-     * The commands to be registered from the package.
-     *
-     * @var array
-     */
-    protected $commands = [
-    ];
-
-    /**
      * Perform post-registration booting of services.
      *
      * @return void
      */
     public function boot()
     {
-        $this->setupConfig();
 
-        $this->publishAllConfigs();
+        $this->package('thenextweb/passgenerator');
+        //$this->setupConfig();
+
+        //$this->publishAllConfigs();
     }
 
     /**
-     * Register any package services.
+     * Register the service provider.
      *
      * @return void
      */
     public function register()
     {
-        $this->app->bind('passgenerator', function ($app) {
-            return new PassGenerator($app);
+        $this->app->booting(function()
+        {
+            $loader = \Illuminate\Foundation\AliasLoader::getInstance();
+            $loader->alias('PassGenerator', 'Thenextweb\Facades\PassGenerator');
         });
 
-        $this->commands($this->commands);
+        $this->app['passgenerator'] = $this->app->share(function($app)
+        {
+            return new PassGenerator;
+        });
+
+        $this->app['config']->package('thenextweb/passgenerator', __DIR__.'/config');
     }
 
     /**
-     * It is possible that someone using the package may not publish the config file, or they only
-     * have a subset of the configurable values in their local version of the config file. This uses
-     * the default values unless there are published ones.
+     * Get the services provided by the provider.
      *
-     * http://stagerightlabs.com/blog/laravel5-pacakge-development-service-provider
+     * @return array
      */
-    private function setupConfig()
+    public function provides()
     {
-        //This will merge the 'default' values from the original config file of the package
-        // with the values of the "published" config file (in case the config files were not published)
-        $this->mergeConfigFrom(realpath(__DIR__ . '/../config/passgenerator.php'), 'passgenerator');
-
-        $this->mergeConfigFrom(realpath(__DIR__ . '/../config/pass-filesystem.php'), 'filesystems');
+        return array("passgenerator");
     }
 
-    /**
-     * Publish all the package's config files to the app.
-     */
-    private function publishAllConfigs()
-    {
-        $this->publishes([
-            realpath(__DIR__.'/../config/passgenerator.php') => config_path('passgenerator.php'),
-        ], 'config');
-    }
 }
