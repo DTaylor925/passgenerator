@@ -12,8 +12,8 @@ Passgenerator is a Laravel5+ package that allows you to easily create passes com
 ## 👮 Requirements
 
 Only things needed are Laravel 5+ and to have the [PHP Zip extension](http://php.net/manual/en/book.zip.php) installed and enabled.
-UPDATE:
-This is a forked package for compatibility with Laravel 4.2, works mostly the same way
+
+UPDATE: This is a forked package for compatibility with Laravel 4.2, works mostly the same way
 
 ## 💾 Installation
 The best and easiest way o install the package is using the [Composer](https://getcomposer.org/) package manager. To do so, run this command in your project root:
