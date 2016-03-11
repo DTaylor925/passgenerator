@@ -27,7 +27,7 @@ Then, add the `Thenextweb\PassGeneratorServiceProvider` provider to the provider
 ```php
 'providers' => [
 // ...
-    Thenextweb\PassGeneratorServiceProvider::class,
+    'Thenextweb\PassGeneratorServiceProvider',
 ],
 ```
 
@@ -63,8 +63,8 @@ Once all this tedious process has been done, everything is almost ready to start
 In case there is a reason the config file must be modified (conflicting env keys, dynamic certificates required...), it can be published with the following command:
 
 ```sh
-// file will be at config/passgenerator.php
-php artisan vendor:publish --provider="Thenextweb\PassGeneratorServiceProvider"
+// file will be at config/packages/thenextweb/passgenerator.php
+php artisan config:publish thenextweb/passgenerator
 ```
 
 ## 🚀 Usage
